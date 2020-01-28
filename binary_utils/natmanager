@@ -1,0 +1,67 @@
+#!/bin/bash
+nat_rules(){
+        local rc
+        rc=0
+        iptables -t nat -${OPTION} POSTROUTING -o $NET_EXT_IFACE -j MASQUERADE || rc=$?
+        for AUX_IFACE in $NET_INT_IFACE ; do
+                iptables -${OPTION} FORWARD -i $NET_EXT_IFACE -o $AUX_IFACE -m state --state RELATED,ESTABLISHED -j ACCEPT || rc=$?
+                iptables -${OPTION} FORWARD -i $AUX_IFACE -o $NET_EXT_IFACE -j ACCEPT || rc=$?
+        done
+        #return $rc
+}
+
+check_arguments(){
+  if [ "$#" -lt "2" ]; then
+  	exit 0 
+  fi
+}
+
+parse_arguments(){
+  if [ -z "$IFACE" ]; then
+    if [ -z "$2" ]; then
+    	exit 0
+    fi
+    IFACE=$2
+  fi
+  OPTION=$1
+  NET_EXT_IFACE=$IFACE
+  NET_INT_IFACE=`$PATH_INTERNAL_INTERFACES`
+  if [ -z "$NET_INT_IFACE" ]; then
+	echo "script to get internal interfaces is void"
+  	exit 0
+  fi
+
+}
+
+load_default_settings(){
+	PATH_INTERNAL_INTERFACES=""
+	[ ! -e /etc/nat_enabler.conf ] || . /etc/nat_enabler.conf
+
+}
+#####################
+##		   ##
+##	Main	   ##
+##		   ##
+#####################
+
+check_arguments $@
+load_default_settings
+parse_arguments $@
+case $OPTION in
+"deactivate" )
+	if `iptables-save -t nat | grep "\-A POSTROUTING \-o $NET_EXT_IFACE \-j MASQUERADE" 1>/dev/null 2>&1` ; then  
+		OPTION="D"
+                nat_rules 
+	fi
+
+	;;
+"activate" )
+	if ! `iptables-save -t nat | grep "\-A POSTROUTING \-o $NET_EXT_IFACE \-j MASQUERADE" 1>/dev/null 2>&1` ; then 
+		OPTION="A"
+		nat_rules
+	fi
+	;;
+esac
+
+sleep infinity
+
